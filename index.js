@@ -1,14 +1,11 @@
 const express = require('express');
-const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
-require('dotenv').config();
+const pool = require('./db');
+const bcrypt = require('bcryptjs');
+
 
 const app = express();
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 app.use((req, res, next) => {
   console.log(`[SERVER] ${req.method} ${req.path}`);
@@ -21,6 +18,7 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 };
+
 app.use(cors(corsOptions));
 app.use(express.json());
 
@@ -41,8 +39,11 @@ app.post('/login', async (req, res) => {
       return res.status(400).send({ message: 'User does not exist' });
     }
 
-    if (result.rows[0].password === password) {
-      return res.status(200).send({ id: result.rows[0].id });
+    const storedHash = result.rows[0].password;
+    const isMatch = await bcrypt.compare(password, storedHash);
+
+    if (isMatch) {
+      return res.status(200).send({ primaryId: result.rows[0].id });
     } else {
       return res.status(401).send({ message: 'Incorrect password' });
     }
@@ -70,7 +71,7 @@ app.post('/register', async (req, res) => {
       [user_name, password]
     );
 
-    res.status(201).send({ id: result.rows[0].id });
+    res.status(201).send({ primaryId: result.rows[0].id });
   } catch (err) {
     console.error('Registration error:', err);
     res.status(500).send({ message: 'Server error' });
@@ -80,19 +81,31 @@ app.post('/register', async (req, res) => {
 
 app.post('/account', async (req, res) => {
   const {
-    user_id, first_name, last_name,
-    address_1, address_2, city,
-    state, zip_code, phone_number, email
+    userId, firstname, lastname,
+    address_line_1, address_line_2, city,
+    state, zip, phone, email
   } = req.body;
 
   try {
+    const check = await pool.query(
+      'SELECT * FROM user_account_details WHERE user_id = $1',
+      [userId]
+    );
+
+    if (check.rowCount > 0) {
+      return res.status(200).send({
+        message: 'Account already exists.',
+        account: check.rows[0],
+      });
+    }
+
     const result = await pool.query(
-      `INSERT INTO users_accounts_details (
+      `INSERT INTO user_account_details (
         user_id, first_name, last_name, address_1, address_2,
         city, state, zip_code, phone_number, email
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
-      [user_id, first_name, last_name, address_1, address_2, city, state, zip_code, phone_number, email]
+      [userId, firstname, lastname, address_line_1, address_line_2, city, state, zip, phone, email]
     );
 
     res.status(201).send(result.rows[0]);
@@ -104,12 +117,12 @@ app.post('/account', async (req, res) => {
 
 
 app.get('/account', async (req, res) => {
-  const user_id = req.query.user_id;
+  const userId = req.query.userId;
 
   try {
     const result = await pool.query(
-      'SELECT * FROM users_accounts_details WHERE user_id = $1',
-      [user_id]
+      'SELECT * FROM user_account_details WHERE user_id = $1',
+      [userId]
     );
 
     if (result.rowCount === 0) {
@@ -123,44 +136,41 @@ app.get('/account', async (req, res) => {
   }
 });
 
-
 app.put('/account', async (req, res) => {
   const {
-    user_id, first_name, last_name,
-    address_1, address_2, city,
-    state, zip_code, phone_number, email
+    userId, firstname, lastname,
+    address_line_1, address_line_2, city,
+    state, zip, phone, email
   } = req.body;
 
   try {
-    const check = await pool.query(
-      'SELECT * FROM users_accounts_details WHERE user_id = $1',
-      [user_id]
-    );
-
-    if (check.rowCount === 0) {
-      return res.status(404).send({ message: 'No account found' });
-    }
-
     const result = await pool.query(
-      `UPDATE users_accounts_details SET
-        first_name = $1,
-        last_name = $2,
-        address_1 = $3,
-        address_2 = $4,
-        city = $5,
-        state = $6,
-        zip_code = $7,
-        phone_number = $8,
-        email = $9
-      WHERE user_id = $10
-      RETURNING *`,
-      [first_name, last_name, address_1, address_2, city, state, zip_code, phone_number, email, user_id]
+      `
+      INSERT INTO user_account_details (
+        user_id, first_name, last_name, address_1, address_2,
+        city, state, zip_code, phone_number, email
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (user_id)
+      DO UPDATE SET
+        first_name = EXCLUDED.first_name,
+        last_name = EXCLUDED.last_name,
+        address_1 = EXCLUDED.address_1,
+        address_2 = EXCLUDED.address_2,
+        city = EXCLUDED.city,
+        state = EXCLUDED.state,
+        zip_code = EXCLUDED.zip_code,
+        phone_number = EXCLUDED.phone_number,
+        email = EXCLUDED.email
+      RETURNING *;
+      `,
+      [userId, firstname, lastname, address_line_1, address_line_2, city, state, zip, phone, email]
     );
 
     res.status(200).send(result.rows[0]);
   } catch (err) {
-    console.error('Account PUT error:', err);
-    res.status(500).send({ message: 'Error updating account details' });
+    console.error('Account UPSERT error:', err);
+    res.status(500).send({ message: 'Error saving account details' });
   }
 });
 

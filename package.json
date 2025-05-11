@@ -1,7 +1,7 @@
 {
-  "name": "node-express-web",
+  "name": "express-web",
   "version": "1.0.0",
-  "description": "",
+  "description": "This is a simple hello world express.js server.",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon index.js",
@@ -11,6 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "ejs": "^3.1.9",
@@ -18,5 +19,14 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gaidenshinjiongithub/expressproject.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/gaidenshinjiongithub/expressproject/issues"
+  },
+  "homepage": "https://github.com/gaidenshinjiongithub/expressproject#readme"
 }
